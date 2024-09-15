@@ -1,0 +1,6 @@
+# dune init proj bf
+# OCAMLPARAM: unset
+# Shared cache: disabled
+# Shared cache location: /Users/dibrinsofor/.cache/dune/db
+# Workspace root: /Users/dibrinsofor/Desktop/projs/bestfriend/bf
+# Auto-detected concurrency: 10
