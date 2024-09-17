@@ -4,7 +4,6 @@ type token =
 
 exception InterpError of string
 
-(* Tokenizer function *)
 let tokenize input =
   let rec tokenize_aux i acc =
     if i >= String.length input then List.rev acc
@@ -26,6 +25,9 @@ let tokenize input =
   in
   tokenize_aux 0 []
 
+let drop_from_index idx lst =
+    List.filteri (fun i _ -> i >= idx) lst
+  
 let rec seek_closing_brack tokens depth = 
   match tokens with
   | [] -> raise (InterpError "expected closing bracket")
@@ -34,15 +36,17 @@ let rec seek_closing_brack tokens depth =
   | LBrack :: rest -> seek_closing_brack rest (depth + 1)
   | _ :: rest -> seek_closing_brack rest depth
 
-let rec seek_opening_brack tokens depth idx = 
+let rec seek_opening_brack tokens o_t depth idx = 
   match tokens with 
   | [] -> raise (InterpError "expected opening bracket")
-  | LBrack :: rest when depth = 0 -> rest
-  | LBrack :: rest -> seek_opening_brack rest (depth - 1) (idx + 1)
-  | RBrack :: rest -> seek_opening_brack rest (depth + 1) (idx + 1)
-  | _ :: rest -> seek_opening_brack rest depth (idx + 1)
+  | LBrack :: _rest when depth = 0 -> 
+    Printf.printf "found match at: %d" idx;
+    drop_from_index idx o_t
+  | LBrack :: rest -> seek_opening_brack rest o_t (depth - 1) (idx + 1)
+  | RBrack :: rest -> seek_opening_brack rest o_t (depth + 1) (idx + 1)
+  | _ :: rest -> seek_opening_brack rest o_t depth (idx + 1)
+    
 
-(* BF interpreter core *)
 let interpret tokens =
   let tape = Array.make 30000 0 in
   let output = Buffer.create 128 in
@@ -78,7 +82,7 @@ let interpret tokens =
     | RBrack :: rest when tape.(ptr) = 0 -> 
       execute (RBrack :: acc) rest ptr
     | RBrack :: _rest -> 
-      let goto = seek_opening_brack acc 0 0 in
+      let goto = seek_opening_brack (List.rev acc) (List.rev acc) 0 0 in
       execute (RBrack :: acc) goto ptr
   in
   execute [] tokens 0
