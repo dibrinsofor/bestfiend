@@ -46,7 +46,6 @@ let rec seek_opening_brack tokens o_t depth idx =
   | RBrack :: rest -> seek_opening_brack rest o_t (depth + 1) (idx + 1)
   | _ :: rest -> seek_opening_brack rest o_t depth (idx + 1)
     
-
 let interpret tokens =
   let tape = Array.make 30000 0 in
   let output = Buffer.create 128 in
@@ -85,8 +84,10 @@ let interpret tokens =
       let goto = seek_opening_brack (List.rev acc) (List.rev acc) 0 0 in
       execute (RBrack :: acc) goto ptr
   in
-  execute [] tokens 0
-
+  begin
+    Printf.printf "%s" (Buffer.contents output);
+    execute [] tokens 0
+  end
 
 let frontend input =
   let tokens = tokenize input in

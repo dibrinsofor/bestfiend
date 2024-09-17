@@ -42,10 +42,8 @@ let command =
       fun () ->
         match filename with
         | Some file -> 
-          print_endline "out:";
           read_input_from_file file |> process_input |> print_endline
         | None -> 
-          print_endline "out:";
           read_input_from_stdin () |> process_input |> print_endline)
   
   let () = Command_unix.run command
