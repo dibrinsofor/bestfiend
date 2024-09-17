@@ -5,11 +5,11 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github dnsofor/bf))
 
-(authors "Author Name")
+(authors "DN")
 
-(maintainers "Maintainer Name")
+(maintainers "DN")
 
 (license LICENSE)
 

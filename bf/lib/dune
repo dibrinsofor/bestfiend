@@ -1,2 +1,3 @@
 (library
- (name bf))
+ (name bf)
+ (modules parser)) 

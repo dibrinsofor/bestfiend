@@ -1,6 +1,16 @@
-# dune init proj bf
+# dune exec bf
 # OCAMLPARAM: unset
 # Shared cache: disabled
 # Shared cache location: /Users/dibrinsofor/.cache/dune/db
 # Workspace root: /Users/dibrinsofor/Desktop/projs/bestfriend/bf
 # Auto-detected concurrency: 10
+# Dune context:
+#  { name = "default"
+#  ; kind = "default"
+#  ; profile = Dev
+#  ; merlin = true
+#  ; fdo_target_exe = None
+#  ; build_dir = In_build_dir "default"
+#  ; instrument_with = []
+#  }
+$ /Users/dibrinsofor/.opam/default/bin/ocamlc.opt -config > /var/folders/jp/nnmjkv0d3_ld7_n1r44fxvsc0000gn/T/dune_9c46f1_output
