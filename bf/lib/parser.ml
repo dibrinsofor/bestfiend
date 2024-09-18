@@ -48,10 +48,10 @@ let rec seek_opening_brack tokens o_t depth idx =
     
 let interpret tokens =
   let tape = Array.make 30000 0 in
-  let output = Buffer.create 128 in
+  let outt = Buffer.create 128 in
   let rec execute acc tokens ptr =
     match tokens with
-    | [] -> Buffer.contents output
+    | [] -> Buffer.contents outt
     | Left :: rest -> 
       let new_ptr = if ptr > 0 then ptr - 1 else ptr in
       execute (Left :: acc) rest new_ptr
@@ -64,11 +64,9 @@ let interpret tokens =
     | Minus :: rest ->
       tape.(ptr) <- (tape.(ptr) - 1 + 256) mod 256;
       execute (Minus :: acc) rest ptr
-    | Dot :: rest -> begin
-      Buffer.add_char output (Char.chr tape.(ptr));
-      print_string (Buffer.contents output);
+    | Dot :: rest -> 
+      Buffer.add_char outt (Char.chr tape.(ptr));
       execute (Dot :: acc) rest ptr
-      end
     | Comma :: rest -> 
       let ch = input_char stdin in
       tape.(ptr) <- int_of_char ch;
@@ -85,7 +83,7 @@ let interpret tokens =
       execute (RBrack :: acc) goto ptr
   in
   begin
-    Printf.printf "%s" (Buffer.contents output);
+    Printf.printf "%s" (Buffer.contents outt);
     execute [] tokens 0
   end
 
