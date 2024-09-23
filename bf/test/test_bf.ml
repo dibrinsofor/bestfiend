@@ -13,13 +13,18 @@ let token_equal t1 t2 =
 let%test "tokens" =
   List.equal token_equal (tokenize "+++") [ Plus; Plus; Plus ]
 
-  let%test "tokens2" =
+let%test "tokens2" =
   List.equal token_equal (tokenize ">++[<++]<.") [ Right; Plus; Plus; LBrack; Left; Plus; Plus; RBrack; Left; Dot ]
 
+let%test "tokensdot" =
+  List.equal token_equal (tokenize "...") [ Dot; Dot; Dot ]
 
-(* let%test "interp_hw" =
+let%test "loops" = 
+  String.equal (let prog = "+++[>+++++<-]>." in frontend prog) "A"
+
+let%test "interp_hw" =
   String.equal (let program = "+++++++ [ > ++++++++++ < - ] > ++ . < +++ [ > ++++++++++ < - ] > - .
 +++++++ . . +++ . < ++++++++ [ > ---------- < - ] > + . 
 < +++++ [ > ++++++++++ < - ] > +++++ . < ++ [ > ++++++++++ < - ] > ++++ . 
 +++ . ------ . -------- . < +++++++ [ > ---------- < - ] > +++ . 
-< ++ [ > ---------- < - ] > --- ." in frontend program) "Hello WOrld!" *)
+< ++ [ > ---------- < - ] > --- ." in frontend program) "Hello WOrld!"

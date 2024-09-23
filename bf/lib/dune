@@ -1,3 +1,4 @@
 (library
  (name bf)
+ (libraries core)
  (modules parser)) 
