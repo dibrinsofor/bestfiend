@@ -49,6 +49,7 @@ let rec seek_opening_brack tokens o_t depth idx =
 
 let interpret tokens =
   let outt = Buffer.create 500 in
+  let list_of_chars = ref [] in
   let tape = Array.create ~len:30000 0 in
   let buf = Buffer.create 500 in
   let rec execute acc tokens ptr =
@@ -58,7 +59,19 @@ let interpret tokens =
       Stdio.Out_channel.output_buffer Stdio.stdout buf;
       Stdio.Out_channel.flush Stdio.stdout;
       Buffer.clear buf;
-      ""
+      
+      Buffer.add_string buf (Printf.sprintf "OG buff");
+      Stdio.Out_channel.output_buffer Stdio.stdout outt;
+      Stdio.Out_channel.flush Stdio.stdout;
+      Buffer.clear buf;
+      
+      Buffer.add_string buf (Printf.sprintf "nu graz");
+      let output_string = String.of_char_list (List.rev !list_of_chars) in
+      Buffer.add_string buf (Printf.sprintf "Final output: %s\n" output_string);
+      Stdio.Out_channel.output_buffer Stdio.stdout buf;
+      Stdio.Out_channel.flush Stdio.stdout;
+      Buffer.clear buf;
+      output_string
     | Left :: rest -> 
       let new_ptr = if ptr > 0 then ptr - 1 else ptr in
       Buffer.add_string buf (Printf.sprintf "Decr Ptr:: %i\n" new_ptr);
@@ -94,6 +107,8 @@ let interpret tokens =
       Stdio.Out_channel.output_buffer Stdio.stdout buf;
       Stdio.Out_channel.flush Stdio.stdout;
       Buffer.clear buf;
+
+      list_of_chars := output_char :: !list_of_chars;
       
       Stdio.Out_channel.output_buffer Stdio.stdout outt;
       Stdio.Out_channel.flush Stdio.stdout;
@@ -129,8 +144,6 @@ let interpret tokens =
         let goto = seek_opening_brack rev [] 0 0 in
         execute (RBrack :: acc) (List.rev goto @ rest) ptr
   in
-    Stdio.Out_channel.output_buffer Stdio.stdout outt;
-    Stdio.Out_channel.flush Stdio.stdout;
     execute [] tokens 0
 
     
