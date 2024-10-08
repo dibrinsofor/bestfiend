@@ -11,20 +11,33 @@ let token_equal t1 t2 =
 
 
 let%test "tokens" =
-  List.equal token_equal (tokenize "+++") [ Plus; Plus; Plus ]
+  List.equal token_equal (parse_program "+++") [ Plus; Plus; Plus ]
 
 let%test "tokens2" =
-  List.equal token_equal (tokenize ">++[<++]<.") [ Right; Plus; Plus; LBrack; Left; Plus; Plus; RBrack; Left; Dot ]
+  List.equal token_equal (parse_program ">++[<++]<.") [ Right; Plus; Plus; LBrack; Left; Plus; Plus; RBrack; Left; Dot ]
 
 let%test "tokensdot" =
-  List.equal token_equal (tokenize "...") [ Dot; Dot; Dot ]
+  List.equal token_equal (parse_program "...") [ Dot; Dot; Dot ]
+
+(* how do I test the content of stdout *)
+let%test "loops" = 
+  let prog = "+++[>+++++<-]>." in
+  let profiler = {
+    instr_count = Hashtbl.create (module String);
+    simple_loops = Hashtbl.create (module TokenHashSet);
+    complex_loops = Hashtbl.create (module TokenHashSet);
+  } in
+  begin
+  interpret (parse_program prog) true profiler;
+  Int.equal (Hashtbl.length profiler.simple_loops) 1;
+  end
 
 let%test "loops" = 
-  String.equal (let prog = "+++[>+++++<-]>." in frontend prog) "A"
+  let program = "+++[>+++++<-]>." in
+  let result = frontend program () in 
+  String.equal result "A"
 
-let%test "interp_hw" =
-  String.equal (let program = "+++++++ [ > ++++++++++ < - ] > ++ . < +++ [ > ++++++++++ < - ] > - .
-+++++++ . . +++ . < ++++++++ [ > ---------- < - ] > + . 
-< +++++ [ > ++++++++++ < - ] > +++++ . < ++ [ > ++++++++++ < - ] > ++++ . 
-+++ . ------ . -------- . < +++++++ [ > ---------- < - ] > +++ . 
-< ++ [ > ---------- < - ] > --- ." in frontend program) "Hello WOrld!"
+let%test "interpret_hello_world" =
+  let program = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++." in
+  let result = frontend program () in
+  String.equal result "Hello World!"
