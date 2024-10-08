@@ -4,6 +4,12 @@ open Base
 type token = 
   | Left | Right | Plus | Minus | Dot | Comma | LBrack | RBrack
 
+
+let get_char_value () =
+  match Stdio.In_channel.input_char Stdio.stdin with
+  | Some c -> Char.to_int c
+  | None -> 0
+
   let parse_program code =
   let rec parse acc = function
     | [] -> List.rev acc
@@ -17,48 +23,49 @@ type token =
     | ']' :: rest -> parse (RBrack :: acc) rest
     | _ :: rest -> parse acc rest
   in
-  parse [] (List.of_seq (String.to_seq code))
+  parse [] (String.to_list code)
   
   let interpret program =
-    let memory = Array.make 30000 0 in
+    let memory = Array.create ~len:30000 0 in
     let pointer = ref 0 in
     
     let rec execute pc =
       if pc >= List.length program then ()
       else
         match List.nth program pc with
-        | Left -> incr pointer; execute (pc + 1)
-        | Right -> decr pointer; execute (pc + 1)
-        | Plus-> memory.(!pointer) <- (memory.(!pointer) + 1) mod 256; execute (pc + 1)
-        | Minus -> memory.(!pointer) <- (memory.(!pointer) - 1 + 256) mod 256; execute (pc + 1)
-        | Dot -> printf "%c" (Char.chr memory.(!pointer)); execute (pc + 1)
-        | Comma -> memory.(!pointer) <- Char.code (input_char stdin); execute (pc + 1)
-        | LBrack ->
+        | Some Left -> Int.incr pointer; execute (pc + 1)
+        | Some Right -> Int.decr pointer; execute (pc + 1)
+        | Some Plus-> memory.(!pointer) <- Int.rem (memory.(!pointer) + 1) 256; execute (pc + 1)
+        | Some Minus -> memory.(!pointer) <- Int.rem (memory.(!pointer) - 1 + 256) 256; execute (pc + 1)
+        | Some Dot -> printf "%c" (Char.of_int_exn memory.(!pointer)); execute (pc + 1)
+        | Some Comma -> memory.(!pointer) <- get_char_value (); execute (pc + 1)
+        | Some LBrack ->
             if memory.(!pointer) = 0 then
               let rec find_matching depth i =
                 if i >= List.length program then failwith "Unmatched ["
                 else match List.nth program i with
-                  | RBrack when depth = 0 -> i
-                  | LBrack -> find_matching (depth + 1) (i + 1)
-                  | RBrack -> find_matching (depth - 1) (i + 1)
+                  | Some RBrack when depth = 0 -> i
+                  | Some LBrack -> find_matching (depth + 1) (i + 1)
+                  | Some RBrack -> find_matching (depth - 1) (i + 1)
                   | _ -> find_matching depth (i + 1)
               in
               execute (find_matching 0 (pc + 1) + 1)
             else
               execute (pc + 1)
-        | RBrack ->
+        | Some RBrack ->
             let rec find_matching depth i =
               if i < 0 then failwith "Unmatched ]"
               else match List.nth program i with
-                | LBrack when depth = 0 -> i
-                | RBrack -> find_matching (depth + 1) (i - 1)
-                | LBrack -> find_matching (depth - 1) (i - 1)
+                | Some LBrack when depth = 0 -> i
+                | Some RBrack -> find_matching (depth + 1) (i - 1)
+                | Some LBrack -> find_matching (depth - 1) (i - 1)
                 | _ -> find_matching depth (i - 1)
             in
             if memory.(!pointer) <> 0 then
               execute (find_matching 0 (pc - 1))
             else
               execute (pc + 1)
+        | None -> failwith "Invalid program counter"
     in
     execute 0
   
