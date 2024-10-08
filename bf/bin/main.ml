@@ -7,9 +7,7 @@ open! Core_unix
 (* exception FrontendError of string *)
 
 let process_input input = 
-  let result = frontend input in
-  print_endline ("Result: " ^ result);
-  result
+  frontend input
 
 let read_input_from_file filename =
   In_channel.read_all filename
@@ -30,7 +28,7 @@ let read_input_from_stdin () =
   
 let command =
   Command.basic
-    ~summary:"Interp your best friend"
+    ~summary:"Interp your bf code"
     (let open Command.Let_syntax in
       let%map_open
         filename = flag "file" (optional string) ~doc:"FILE input file"
@@ -38,8 +36,8 @@ let command =
       fun () ->
         match filename with
         | Some file -> 
-          read_input_from_file file |> process_input |> print_endline
+          read_input_from_file file |> process_input
         | None -> 
-          read_input_from_stdin () |> process_input |> print_endline)
+          read_input_from_stdin () |> process_input)
   
   let () = Command_unix.run command
