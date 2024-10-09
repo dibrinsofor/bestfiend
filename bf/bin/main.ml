@@ -1,4 +1,6 @@
 open Bf.Parser
+open Bf.Gen
+open Bf.Frontend
 open Core
 
 let process_input input profile = 
@@ -29,12 +31,18 @@ let run_bf =
         filename = flag "src" (optional string) ~doc:"read bf program from FILE"
       and
         profile = flag "--profile" (Command.Flag.optional_with_default false Command.Param.bool) ~doc:"Profile loops in your bf program"
+      and 
+        interp = flag "--i" (Command.Flag.optional_with_default false Command.Param.bool) ~doc:"Interpret your bf program"
       in
       fun () ->
         let input =
           match filename with
           | Some file -> read_input_from_file file
           | None -> read_input_from_stdin () in
-        process_input input profile)
+
+        if interp then
+          process_input input profile |> print_endline
+        else
+          compile input profile |> print_endline)
 
 let () = Command_unix.run run_bf
