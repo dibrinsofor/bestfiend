@@ -43,6 +43,8 @@ let run_bf =
         if interp then
           process_input input profile |> print_endline
         else
-          compile input profile |> print_endline)
+          match filename with 
+          | Some f_name -> generate f_name input ~profile:profile ();
+          | None -> failwith "Expected BF Program" |> print_endline)
 
 let () = Command_unix.run run_bf
