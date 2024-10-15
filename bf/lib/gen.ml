@@ -10,199 +10,216 @@ let get_file_ext filename arch =
     | WASM -> filename ^ ".wat"
 
 let generate_asm filename program arch _profile _profiler = 
-  let filename_asm = get_file_ext filename arch in
-  let chan = Stdio.Out_channel.create filename_asm in
-  let print_asm asm = Out_channel.output_string chan (Printf.sprintf "%s\n" asm) in
-
-  let generate_label prefix =
-    let counter = ref 0 in
-    fun () ->
-      Int.incr counter;
-      Printf.sprintf "%s_%d" prefix !counter
-  in
-
-  let loop_label = generate_label "loop" in
-
-  (match arch with
-  | Intel ->
-      print_asm "section .text";
-      print_asm "global _start";
-      print_asm "_start:";
-      print_asm "    mov rsi, memory ; Initialize pointer"
-  | ARM ->
-      print_asm ".text";
-      print_asm ".global _start";
-      print_asm "_start:";
-      print_asm "    adrp x0, memory";
-      print_asm "    add x0, x0, :lo12:memory ; Initialize pointer"
-  | WASM -> 
-      print_asm "(module";
-      print_asm "  (import \"env\" \"memory\" (memory 1))";
-      print_asm "  (import \"env\" \"putchar\" (func $putchar (param i32)))";
-      print_asm "  (import \"env\" \"getchar\" (func $getchar (result i32)))";
-      print_asm "  (func $run (export \"run\")";
-      print_asm "    (local $ptr i32)";
-      print_asm "    i32.const 0";
-      print_asm "    local.set $ptr"
-  );
-
-  let rec emit_command command =
-    match command with 
-    | Parser.Left -> 
-      (match arch with
-        | Intel -> print_asm "    dec rsi ; Move pointer left"
-        | ARM -> print_asm "    sub x0, x0, #1 ; Move pointer left"
-        | WASM ->
-            print_asm "    local.get $ptr";
-            print_asm "    i32.const 1";
-            print_asm "    i32.sub";
-            print_asm "    local.set $ptr"
+    let filename_asm = get_file_ext filename arch in
+    let chan = Stdio.Out_channel.create filename_asm in
+    let output_asm asm = Out_channel.output_string chan (Printf.sprintf "%s\n" asm) in
+    
+    let generate_label prefix =
+        let counter = ref 0 in
+        fun () ->
+        Int.incr counter;
+        Printf.sprintf "%s_%d" prefix !counter
+    in
+    
+    let loop_label = generate_label "loop" in
+    let loop_stack = Stack.create () in
+    
+    (match arch with
+    | Intel ->
+        output_asm "section .text";
+        output_asm "global _start";
+        output_asm "_start:";
+        output_asm "    mov rsi, memory ; Initialize pointer"
+    | ARM ->
+        output_asm ".globl _main";
+        output_asm ".align 2";
+        output_asm ".text";
+        output_asm "_main:";
+        output_asm "    // Save frame pointer and link register";
+        output_asm "    stp x29, x30, [sp, #-16]!";
+        output_asm "    mov x29, sp";
+        output_asm "    // Initialize memory pointer";
+        output_asm "    adrp x19, _memory@PAGE";
+        output_asm "    add x19, x19, _memory@PAGEOFF"
+    | WASM -> 
+        output_asm "(module";
+        output_asm "  (import \"env\" \"memory\" (memory 1))";
+        output_asm "  (import \"env\" \"putchar\" (func $putchar (param i32)))";
+        output_asm "  (import \"env\" \"getchar\" (func $getchar (result i32)))";
+        output_asm "  (func $run (export \"run\")";
+        output_asm "    (local $ptr i32)";
+        output_asm "    i32.const 0";
+        output_asm "    local.set $ptr"
+    );
+    
+    let emit_command command =
+        match command with 
+        | Parser.Left -> 
+        (match arch with
+            | Intel -> output_asm "    dec rsi ; Move pointer left"
+            | ARM -> output_asm "    sub x19, x19, #1 // Move pointer left"
+            | WASM ->
+                output_asm "    local.get $ptr";
+                output_asm "    i32.const 1";
+                output_asm "    i32.sub";
+                output_asm "    local.set $ptr"
         )
-    | Parser.Right -> 
-      (match arch with
-        | Intel -> print_asm "    inc rsi ; Move pointer right"
-        | ARM -> print_asm "    add x0, x0, #1 ; Move pointer right"
-        | WASM ->
-            print_asm "    local.get $ptr";
-            print_asm "    i32.const 1";
-            print_asm "    i32.add";
-            print_asm "    local.set $ptr"
+        | Parser.Right -> 
+        (match arch with
+            | Intel -> output_asm "    inc rsi ; Move pointer right"
+            | ARM -> output_asm "    add x19, x19, #1 // Move pointer right"
+            | WASM ->
+                output_asm "    local.get $ptr";
+                output_asm "    i32.const 1";
+                output_asm "    i32.add";
+                output_asm "    local.set $ptr"
         )
-    | Parser.Plus -> 
-      (match arch with
-      | Intel ->
-          print_asm "    inc byte [rsi] ; Increment value";
-          print_asm "    and byte [rsi], 255 ; Ensure value is in 0-255 range"
-      | ARM ->
-          print_asm "    ldrb w1, [x0]";
-          print_asm "    add w1, w1, #1";
-          print_asm "    and w1, w1, #255";
-          print_asm "    strb w1, [x0]"
-      | WASM ->
-          print_asm "    local.get $ptr";
-          print_asm "    local.get $ptr";
-          print_asm "    i32.load8_u";
-          print_asm "    i32.const 1";
-          print_asm "    i32.add";
-          print_asm "    i32.const 255";
-          print_asm "    i32.and";
-          print_asm "    i32.store8"
-      )
-    | Parser.Minus -> 
-      (match arch with
-      | Intel ->
-          print_asm "    dec byte [rsi] ; Decrement value";
-          print_asm "    and byte [rsi], 255 ; Ensure value is in 0-255 range"
-      | ARM ->
-          print_asm "    ldrb w1, [x0]";
-          print_asm "    sub w1, w1, #1";
-          print_asm "    and w1, w1, #255";
-          print_asm "    strb w1, [x0]"
-      | WASM ->
-          print_asm "    local.get $ptr";
-          print_asm "    local.get $ptr";
-          print_asm "    i32.load8_u";
-          print_asm "    i32.const 1";
-          print_asm "    i32.sub";
-          print_asm "    i32.const 255";
-          print_asm "    i32.and";
-          print_asm "    i32.store8"
-      )
-    | Parser.Dot ->
-      (match arch with
-        | Intel ->
-            print_asm "    mov rax, 1 ; sys_write";
-            print_asm "    mov rdi, 1 ; stdout";
-            print_asm "    mov rdx, 1 ; length";
-            print_asm "    syscall"
-        | ARM ->
-            print_asm "    mov x1, x0 ; buffer";
-            print_asm "    mov x0, #1 ; stdout";
-            print_asm "    mov x2, #1 ; length";
-            print_asm "    mov x8, #64 ; sys_write";
-            print_asm "    svc #0"
-        | WASM ->
-            print_asm "    local.get $ptr";
-            print_asm "    i32.load8_u";
-            print_asm "    call $putchar"
-        )
-    | Parser.Comma ->
-      (match arch with
-        | Intel ->
-            print_asm "    mov rax, 0 ; sys_read";
-            print_asm "    mov rdi, 0 ; stdin";
-            print_asm "    mov rdx, 1 ; length";
-            print_asm "    syscall";
-        | ARM ->
-            print_asm "    mov x1, x0 ; buffer";
-            print_asm "    mov x0, #0 ; stdin";
-            print_asm "    mov x2, #1 ; length";
-            print_asm "    mov x8, #63 ; sys_read";
-            print_asm "    svc #0"
-        | WASM ->
-            print_asm "    call $getchar";
-            print_asm "    local.get $ptr";
-            print_asm "    i32.const 255";
-            print_asm "    i32.and";
-            print_asm "    i32.store8"
-        )
-    | Parser.LBrack ->
-      let label = loop_label () in
+        | Parser.Plus -> 
         (match arch with
         | Intel ->
-            print_asm (Printf.sprintf "%s:" label);
-            print_asm "    cmp byte [rsi], 0 ; Check if current value is zero";
-            print_asm (Printf.sprintf "    je %s_end ; Jump to end if zero" label)
+            output_asm "    inc byte [rsi] ; Increment value";
+            output_asm "    and byte [rsi], 255 ; Ensure value is in 0-255 range"
         | ARM ->
-            print_asm (Printf.sprintf "%s:" label);
-            print_asm "    ldrb w1, [x0]";
-            print_asm "    cmp w1, #0";
-            print_asm (Printf.sprintf "    b.eq %s_end" label)
+            output_asm "    ldrb w0, [x19]";
+            output_asm "    add w0, w0, #1";
+            output_asm "    and w0, w0, #255";
+            output_asm "    strb w0, [x19]"
         | WASM ->
-            print_asm (Printf.sprintf "    (block $%s_end" label);
-            print_asm "      (loop $loop";
-            print_asm "        local.get $ptr";
-            print_asm "        i32.load8_u";
-            print_asm "        i32.eqz";
-            print_asm (Printf.sprintf "        br_if $%s_end" label)
-        );
-        List.iter program ~f:emit_command;
+            output_asm "    local.get $ptr";
+            output_asm "    local.get $ptr";
+            output_asm "    i32.load8_u";
+            output_asm "    i32.const 1";
+            output_asm "    i32.add";
+            output_asm "    i32.const 255";
+            output_asm "    i32.and";
+            output_asm "    i32.store8"
+        )
+        | Parser.Minus -> 
         (match arch with
         | Intel ->
-            print_asm (Printf.sprintf "    jmp %s ; Jump back to start of loop" label);
-            print_asm (Printf.sprintf "%s_end:" label)
+            output_asm "    dec byte [rsi] ; Decrement value";
+            output_asm "    and byte [rsi], 255 ; Ensure value is in 0-255 range"
         | ARM ->
-            print_asm (Printf.sprintf "    b %s" label);
-            print_asm (Printf.sprintf "%s_end:" label)
+            output_asm "    ldrb w0, [x19]";
+            output_asm "    sub w0, w0, #1";
+            output_asm "    and w0, w0, #255";
+            output_asm "    strb w0, [x19]"
         | WASM ->
-            print_asm "        br $loop";
-            print_asm "      )";
-            print_asm "    )"
+            output_asm "    local.get $ptr";
+            output_asm "    local.get $ptr";
+            output_asm "    i32.load8_u";
+            output_asm "    i32.const 1";
+            output_asm "    i32.sub";
+            output_asm "    i32.const 255";
+            output_asm "    i32.and";
+            output_asm "    i32.store8"
         )
-    | Parser.RBrack -> ()
-  in
-
-  List.iter program ~f:emit_command;
-
-  (match arch with
-  | Intel ->
-      print_asm "    mov rax, 60 ; sys_exit";
-      print_asm "    xor rdi, rdi ; exit code 0";
-      print_asm "    syscall";
-      print_asm "section .bss";
-      print_asm "memory: resb 30000"
-  | ARM ->
-      print_asm "    mov x0, #0 ; exit code 0";
-      print_asm "    mov x8, #93 ; sys_exit";
-      print_asm "    svc #0";
-      print_asm ".bss";
-      print_asm "memory: .space 30000"
-  | WASM ->
-      print_asm "  )";
-      print_asm ")"
-  );
-
-  Out_channel.close chan
+        | Parser.Dot ->
+        (match arch with
+            | Intel ->
+                output_asm "    mov rax, 1 ; sys_write";
+                output_asm "    mov rdi, 1 ; stdout";
+                output_asm "    mov rdx, 1 ; length";
+                output_asm "    syscall"
+            | ARM ->
+                output_asm "    ldrb w0, [x19]";
+                output_asm "    bl _putchar"
+            (* | ARM ->
+                output_asm "    mov x0, #1        // stdout";
+                output_asm "    mov x1, x19       // buffer";
+                output_asm "    mov x2, #1        // length";
+                output_asm "    mov x16, #4       // write syscall";
+                output_asm "    svc #0" *)
+            | WASM ->
+                output_asm "    local.get $ptr";
+                output_asm "    i32.load8_u";
+                output_asm "    call $putchar"
+        )
+        | Parser.Comma ->
+        (match arch with
+            | Intel ->
+                output_asm "    mov rax, 0 ; sys_read";
+                output_asm "    mov rdi, 0 ; stdin";
+                output_asm "    mov rdx, 1 ; length";
+                output_asm "    syscall";
+            | ARM ->
+                output_asm "    bl _getchar";
+                output_asm "    strb w0, [x19]"
+            (* | ARM ->
+                output_asm "    mov x0, #0        // stdin";
+                output_asm "    mov x1, x19       // buffer";
+                output_asm "    mov x2, #1        // length";
+                output_asm "    mov x16, #3       // read syscall";
+                output_asm "    svc #0" *)
+            | WASM ->
+                output_asm "    call $getchar";
+                output_asm "    local.get $ptr";
+                output_asm "    i32.const 255";
+                output_asm "    i32.and";
+                output_asm "    i32.store8"
+        )
+        | Parser.LBrack ->
+            let label = loop_label () in
+            Stack.push loop_stack label;
+            (match arch with
+            | Intel ->
+                output_asm (Printf.sprintf "%s:" label);
+                output_asm "    cmp byte [rsi], 0 ; Check if current value is zero";
+                output_asm (Printf.sprintf "    je %s_end ; Jump to end if zero" label)
+            | ARM ->
+                output_asm (Printf.sprintf "%s:" label);
+                output_asm "    ldrb w0, [x19]";
+                output_asm (Printf.sprintf "    cbz w0, %s_end" label)
+            | WASM ->
+                output_asm (Printf.sprintf "    (block $%s_end" label);
+                output_asm "      (loop $loop";
+                output_asm "        local.get $ptr";
+                output_asm "        i32.load8_u";
+                output_asm "        i32.eqz";
+                output_asm (Printf.sprintf "        br_if $%s_end" label)
+            )
+        | Parser.RBrack ->
+            (match arch with
+            | Intel -> 
+                output_asm "    cmp byte [rsi], 0 ; Check if current value is zero";
+                output_asm (Printf.sprintf "    jne %s ; Jump back to start of loop if non-zero" "")
+            | ARM -> 
+                let label = Stack.pop_exn loop_stack in
+                output_asm "    ldrb w0, [x19]";
+                output_asm (Printf.sprintf "    cbnz w0, %s" label);
+                output_asm (Printf.sprintf "%s_end:" label)
+            | WASM ->
+                output_asm "        br $loop";
+                output_asm "      )";
+                output_asm "    )"
+            )
+    in
+    
+    List.iter program ~f:emit_command;
+    
+    (match arch with
+    | Intel ->
+        output_asm "    mov rax, 60 ; sys_exit";
+        output_asm "    xor rdi, rdi ; exit code 0";
+        output_asm "    syscall";
+        output_asm "section .bss";
+        output_asm "memory: resb 30000"
+    | ARM ->
+        output_asm "    // Restore frame pointer and link register";
+        output_asm "    ldp x29, x30, [sp], #16";
+        output_asm "    // Return from main";
+        output_asm "    mov w0, #0  // Return 0";
+        output_asm "    ret";
+        output_asm "";
+        output_asm ".data";
+        output_asm ".align 4";
+        output_asm "_memory: .space 30000"
+    | WASM ->
+        output_asm "  )";
+        output_asm ")"
+    );
+    
+    Out_channel.close chan
 
 
 let generate filename input ?(profile = false)() =
@@ -211,7 +228,8 @@ let generate filename input ?(profile = false)() =
     simple_loops = Hashtbl.create (module TokenHashSet);
     complex_loops = Hashtbl.create (module TokenHashSet);
   } in
-  let arch = WASM in
+  let arch = ARM in
   let program = parse_program input in
   let result = generate_asm filename program arch profile profiler in 
   result;
+  Stdio.print_endline "gen prog exit";

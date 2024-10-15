@@ -2,6 +2,7 @@ open! Base
 open! Stdio
 open Bf.Parser
 open Bf.Frontend
+open Bf.Gen
 
 
 let token_equal t1 t2 =
@@ -20,11 +21,22 @@ let%test "tokens2" =
 let%test "tokensdot" =
   List.equal token_equal (parse_program "...") [ Dot; Dot; Dot ]
 
-
 let%test "interpret_hello_world" =  
   let program = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++." in
   let result = frontend program () in
   String.equal result "Hello World!\n"
+
+let%test "generate_hello" = 
+  let bf_file = "hello.bf" in
+  let output_file = "hello.asm" in
+  let bf_code = In_channel.read_all bf_file in
+
+  generate "hello" bf_code ();
+
+  let was_created = Sys_unix.file_exists output_file in
+    match was_created with
+    | `Yes -> true
+    | _ -> false
 
 let%test "loops_mandel" = 
   let program = "" in

@@ -1,4 +1,4 @@
-open Bf.Parser
+open !Bf.Parser
 open Bf.Gen
 open Bf.Frontend
 open Core
@@ -30,9 +30,9 @@ let run_bf =
       let%map_open
         filename = flag "src" (optional string) ~doc:"read bf program from FILE"
       and
-        profile = flag "--profile" (Command.Flag.optional_with_default false Command.Param.bool) ~doc:"Profile loops in your bf program"
+        profile = flag "-profile" (Command.Flag.optional_with_default false Command.Param.bool) ~doc:"Profile loops in your bf program"
       and 
-        interp = flag "--i" (Command.Flag.optional_with_default false Command.Param.bool) ~doc:"Interpret your bf program"
+        interp = flag "-i" (Command.Flag.optional_with_default false Command.Param.bool) ~doc:"Interpret your bf program"
       in
       fun () ->
         let input =
@@ -45,6 +45,9 @@ let run_bf =
         else
           match filename with 
           | Some f_name -> generate f_name input ~profile:profile ();
-          | None -> failwith "Expected BF Program" |> print_endline)
+          | None -> failwith "Expected BF Program" |> print_endline;
+          
+        
+        (Stdio.print_endline "gen prog exit"))
 
 let () = Command_unix.run run_bf

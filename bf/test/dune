@@ -1,6 +1,6 @@
 (library
  (name test_bf)
- (libraries base stdio bf)
+ (libraries base core_unix.sys_unix stdio bf)
  (preprocess
   (pps ppx_inline_test ppx_assert))
  (inline_tests))
