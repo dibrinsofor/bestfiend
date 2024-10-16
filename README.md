@@ -8,6 +8,8 @@
 - run: `dune exec -- bf --help`
 
 ## run generated assembly with python script
+> [!IMPORTANT]  
+> Only tested the ARM assembly code.
 - run: `py test_gen.py` 
 
 #### [dni ++ not improving ++ probs doesnt work] python interpreter with profiler
