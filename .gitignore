@@ -1,5 +1,5 @@
 *.asm
 *.wat
-*.dYSM/
+*.dSYM/
 node_modules/
 _build/
