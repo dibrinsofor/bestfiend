@@ -3,9 +3,12 @@
 - ocaml
 - Core and Base modules. (`opam install core base`)
 
-build: `cd bf && dune build` 
-run: `dune exec bf`
+### compiler runs by default.
+- build: `cd bf && dune build` 
+- run: `dune exec -- bf --help`
 
+## run generated assembly with python script
+- run: `py test_gen.py` 
 
-### python
+#### [dni ++ not improving ++ probs doesnt work] python interpreter with profiler
 run: `cd pybf && python bf.py --s [bf_string]`

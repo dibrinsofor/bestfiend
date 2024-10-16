@@ -23,6 +23,12 @@ let generate_asm filename program arch _profile _profiler =
     
     let loop_label = generate_label "loop" in
     let loop_stack = Stack.create () in
+
+    let rec output_asm_range i max =
+        if i <= max then
+          (output_asm (Printf.sprintf " str xzr, [x1, #%d]" (i * 16));
+           output_asm_range (i + 1) max)
+    in 
     
     (match arch with
     | Intel ->
@@ -31,16 +37,15 @@ let generate_asm filename program arch _profile _profiler =
         output_asm "_start:";
         output_asm "    mov rsi, memory ; Initialize pointer"
     | ARM ->
-        output_asm ".globl _main";
-        output_asm ".align 2";
         output_asm ".text";
+        output_asm ".global _main";
+        output_asm ".align 4";
         output_asm "_main:";
-        output_asm "    // Save frame pointer and link register";
-        output_asm "    stp x29, x30, [sp, #-16]!";
-        output_asm "    mov x29, sp";
-        output_asm "    // Initialize memory pointer";
-        output_asm "    adrp x19, _memory@PAGE";
-        output_asm "    add x19, x19, _memory@PAGEOFF"
+        output_asm "    sub sp, sp, #0x100"; (*allocate 256 bits of stack space*)
+        output_asm "    mov x1, sp"; (*x1 will be our cell pointer*)
+
+        (* initialize our 16 cells (16 bits each) to zero *)
+        output_asm_range 0 15;
     | WASM -> 
         output_asm "(module";
         output_asm "  (import \"env\" \"memory\" (memory 1))";
@@ -57,7 +62,8 @@ let generate_asm filename program arch _profile _profiler =
         | Parser.Left -> 
         (match arch with
             | Intel -> output_asm "    dec rsi ; Move pointer left"
-            | ARM -> output_asm "    sub x19, x19, #1 // Move pointer left"
+            | ARM -> 
+                output_asm "    add x1, x1, #-16";
             | WASM ->
                 output_asm "    local.get $ptr";
                 output_asm "    i32.const 1";
@@ -67,7 +73,8 @@ let generate_asm filename program arch _profile _profiler =
         | Parser.Right -> 
         (match arch with
             | Intel -> output_asm "    inc rsi ; Move pointer right"
-            | ARM -> output_asm "    add x19, x19, #1 // Move pointer right"
+            | ARM -> 
+                output_asm "    add x1, x1, #16"
             | WASM ->
                 output_asm "    local.get $ptr";
                 output_asm "    i32.const 1";
@@ -80,10 +87,9 @@ let generate_asm filename program arch _profile _profiler =
             output_asm "    inc byte [rsi] ; Increment value";
             output_asm "    and byte [rsi], 255 ; Ensure value is in 0-255 range"
         | ARM ->
-            output_asm "    ldrb w0, [x19]";
-            output_asm "    add w0, w0, #1";
-            output_asm "    and w0, w0, #255";
-            output_asm "    strb w0, [x19]"
+            output_asm "    ldr x7, [x1]";
+            output_asm "    add x7, x7, #1";
+            output_asm "    str x7, [x1]"
         | WASM ->
             output_asm "    local.get $ptr";
             output_asm "    local.get $ptr";
@@ -100,10 +106,9 @@ let generate_asm filename program arch _profile _profiler =
             output_asm "    dec byte [rsi] ; Decrement value";
             output_asm "    and byte [rsi], 255 ; Ensure value is in 0-255 range"
         | ARM ->
-            output_asm "    ldrb w0, [x19]";
-            output_asm "    sub w0, w0, #1";
-            output_asm "    and w0, w0, #255";
-            output_asm "    strb w0, [x19]"
+            output_asm "    ldr x7, [x1]";
+            output_asm "    add x7, x7, #-1";
+            output_asm "    str x7, [x1]"
         | WASM ->
             output_asm "    local.get $ptr";
             output_asm "    local.get $ptr";
@@ -122,14 +127,12 @@ let generate_asm filename program arch _profile _profiler =
                 output_asm "    mov rdx, 1 ; length";
                 output_asm "    syscall"
             | ARM ->
-                output_asm "    ldrb w0, [x19]";
-                output_asm "    bl _putchar"
-            (* | ARM ->
-                output_asm "    mov x0, #1        // stdout";
-                output_asm "    mov x1, x19       // buffer";
-                output_asm "    mov x2, #1        // length";
-                output_asm "    mov x16, #4       // write syscall";
-                output_asm "    svc #0" *)
+                output_asm "    mov x6, x1";
+                output_asm "    mov x0, #1";
+                output_asm "    mov x2, #1";
+                output_asm "    mov x16, #4"; (*syscall write*)
+                output_asm "    svc #0x80"; (*print*)
+                output_asm "    mov x1, x6"
             | WASM ->
                 output_asm "    local.get $ptr";
                 output_asm "    i32.load8_u";
@@ -143,14 +146,12 @@ let generate_asm filename program arch _profile _profiler =
                 output_asm "    mov rdx, 1 ; length";
                 output_asm "    syscall";
             | ARM ->
-                output_asm "    bl _getchar";
-                output_asm "    strb w0, [x19]"
-            (* | ARM ->
-                output_asm "    mov x0, #0        // stdin";
-                output_asm "    mov x1, x19       // buffer";
-                output_asm "    mov x2, #1        // length";
-                output_asm "    mov x16, #3       // read syscall";
-                output_asm "    svc #0" *)
+                output_asm "    mov x6, x1";
+                output_asm "    mov x0, #0"; 
+                output_asm "    mov x2, #1";
+                output_asm "    mov x16, #3"; (*syscall read*)
+                output_asm "    svc #0x80";
+                output_asm "    mov x1, x6"
             | WASM ->
                 output_asm "    call $getchar";
                 output_asm "    local.get $ptr";
@@ -168,8 +169,8 @@ let generate_asm filename program arch _profile _profiler =
                 output_asm (Printf.sprintf "    je %s_end ; Jump to end if zero" label)
             | ARM ->
                 output_asm (Printf.sprintf "%s:" label);
-                output_asm "    ldrb w0, [x19]";
-                output_asm (Printf.sprintf "    cbz w0, %s_end" label)
+                output_asm "    ldr x7, [x1]";
+                output_asm (Printf.sprintf "    cbz x7, %s_end" label)
             | WASM ->
                 output_asm (Printf.sprintf "    (block $%s_end" label);
                 output_asm "      (loop $loop";
@@ -179,15 +180,15 @@ let generate_asm filename program arch _profile _profiler =
                 output_asm (Printf.sprintf "        br_if $%s_end" label)
             )
         | Parser.RBrack ->
+            let label = Stack.pop_exn loop_stack in
             (match arch with
             | Intel -> 
                 output_asm "    cmp byte [rsi], 0 ; Check if current value is zero";
                 output_asm (Printf.sprintf "    jne %s ; Jump back to start of loop if non-zero" "")
             | ARM -> 
-                let label = Stack.pop_exn loop_stack in
-                output_asm "    ldrb w0, [x19]";
-                output_asm (Printf.sprintf "    cbnz w0, %s" label);
-                output_asm (Printf.sprintf "%s_end:" label)
+                output_asm (Printf.sprintf "%s_end:" label);
+                output_asm "    ldr x7, [x1]";
+                output_asm (Printf.sprintf "    cbnz x7, %s" label)
             | WASM ->
                 output_asm "        br $loop";
                 output_asm "      )";
@@ -205,15 +206,9 @@ let generate_asm filename program arch _profile _profiler =
         output_asm "section .bss";
         output_asm "memory: resb 30000"
     | ARM ->
-        output_asm "    // Restore frame pointer and link register";
-        output_asm "    ldp x29, x30, [sp], #16";
-        output_asm "    // Return from main";
-        output_asm "    mov w0, #0  // Return 0";
+        output_asm "    add sp, sp, #0x100";  (* Restore stack ptr *)
+        output_asm "    mov w0, #0";
         output_asm "    ret";
-        output_asm "";
-        output_asm ".data";
-        output_asm ".align 4";
-        output_asm "_memory: .space 30000"
     | WASM ->
         output_asm "  )";
         output_asm ")"
