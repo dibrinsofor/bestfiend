@@ -9,6 +9,7 @@
 
 ### run generated assembly with python script
 - run: `py test_gen.py` 
+- run: Use flag `-b` to run the benchmark or `-c [FILE]` to compile and exec some bf program
 > [!IMPORTANT]  
 > Only tested the ARM assembly code.
 
