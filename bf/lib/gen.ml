@@ -1,7 +1,10 @@
+open !Utils
+open !Llvmir
 open !Parser
+open BFIR
 open Base
 
-type architecture = Intel | ARM | WASM
+type arch = Intel | ARM | WASM
 
 let get_file_ext filename arch =
     match arch with
@@ -9,20 +12,32 @@ let get_file_ext filename arch =
     | ARM -> filename ^ ".asm"
     | WASM -> filename ^ ".wat"
 
-let generate_asm filename program arch _profile _profiler = 
+let generate_asm filename program arch  = 
     let filename_asm = get_file_ext filename arch in
     let chan = Stdio.Out_channel.create filename_asm in
     let output_asm asm = Out_channel.output_string chan (Printf.sprintf "%s\n" asm) in
+
+    let _ = Stdio.print_endline (BFIR.bfir_to_string program) in
     
     let generate_label prefix =
         let counter = ref 0 in
         fun () ->
-        Int.incr counter;
-        Printf.sprintf "%s_%d" prefix !counter
+            Int.incr counter;
+            Printf.sprintf "%s_%d" prefix !counter
     in
     
     let loop_label = generate_label "loop" in
     let loop_stack = Stack.create () in
+
+    let emit_loop_end_cmd arch loop_stack = 
+        let label = Stack.pop_exn loop_stack in
+        match arch with
+        | ARM -> 
+            output_asm "    ldrb w0, [x20]";
+            output_asm (Printf.sprintf "    cbnz w0, %s" label);
+            output_asm (Printf.sprintf "%s_end:" label);
+        | _ -> ()
+    in
 
     let rec _output_asm_range i max =
         if i <= max then
@@ -31,11 +46,6 @@ let generate_asm filename program arch _profile _profiler =
     in 
     
     (match arch with
-    | Intel ->
-        output_asm "section .text";
-        output_asm "global _start";
-        output_asm "_start:";
-        output_asm "    mov rsi, memory ; Initialize pointer"
     | ARM ->
         output_asm ".global _main";
         output_asm ".align 2";
@@ -56,161 +66,74 @@ let generate_asm filename program arch _profile _profiler =
         output_asm "    mov x2, #30000";
         output_asm "    mov x1, #0"; (* Initialize memory to zero *)
         output_asm "    bl _memset";
-    | WASM -> 
-        output_asm "(module";
-        output_asm "  (import \"env\" \"memory\" (memory 1))";
-        output_asm "  (import \"env\" \"putchar\" (func $putchar (param i32)))";
-        output_asm "  (import \"env\" \"getchar\" (func $getchar (result i32)))";
-        output_asm "  (func $run (export \"run\")";
-        output_asm "    (local $ptr i32)";
-        output_asm "    i32.const 0";
-        output_asm "    local.set $ptr"
+    | _ -> ()
     );
     
-    let emit_command command =
+    let rec emit_command (command: bfir) =
         match command with 
-        | Parser.Left -> 
+        | Left { count } -> 
         (match arch with
-            | Intel -> output_asm "    dec rsi ; Move pointer left"
-            | ARM -> output_asm "    sub x20, x20, #1"
-            | WASM ->
-                output_asm "    local.get $ptr";
-                output_asm "    i32.const 1";
-                output_asm "    i32.sub";
-                output_asm "    local.set $ptr"
+            | ARM -> output_asm (Printf.sprintf "    sub x20, x20, #%d" count)
+            | _ -> ()
         )
-        | Parser.Right -> 
+        | Right { count } -> 
         (match arch with
-            | Intel -> output_asm "    inc rsi ; Move pointer right"
-            | ARM -> output_asm "    add x20, x20, #1"
-            | WASM ->
-                output_asm "    local.get $ptr";
-                output_asm "    i32.const 1";
-                output_asm "    i32.add";
-                output_asm "    local.set $ptr"
+            | ARM -> output_asm (Printf.sprintf "    add x20, x20, #%d" count)
+            | _ -> ()
         )
-        | Parser.Plus -> 
+        | Plus { count } -> 
         (match arch with
-        | Intel ->
-            output_asm "    inc byte [rsi] ; Increment value";
-            output_asm "    and byte [rsi], 255 ; Ensure value is in 0-255 range"
-        | ARM ->
-            output_asm "    ldrb w0, [x20]";
-            output_asm "    add w0, w0, #1";
-            output_asm "    and w0, w0, #255";
-            output_asm "    strb w0, [x20]"
-        | WASM ->
-            output_asm "    local.get $ptr";
-            output_asm "    local.get $ptr";
-            output_asm "    i32.load8_u";
-            output_asm "    i32.const 1";
-            output_asm "    i32.add";
-            output_asm "    i32.const 255";
-            output_asm "    i32.and";
-            output_asm "    i32.store8"
+            | ARM ->
+                output_asm "    ldrb w0, [x20]";
+                output_asm (Printf.sprintf "    add w0, w0, #%d" count);
+                output_asm "    and w0, w0, #255";
+                output_asm "    strb w0, [x20]"
+            | _ -> ()
         )
-        | Parser.Minus -> 
+        | Minus { count } -> 
         (match arch with
-        | Intel ->
-            output_asm "    dec byte [rsi] ; Decrement value";
-            output_asm "    and byte [rsi], 255 ; Ensure value is in 0-255 range"
-        | ARM ->
-            output_asm "    ldrb w0, [x20]";
-            output_asm "    sub w0, w0, #1";
-            output_asm "    and w0, w0, #255";
-            output_asm "    strb w0, [x20]"
-        | WASM ->
-            output_asm "    local.get $ptr";
-            output_asm "    local.get $ptr";
-            output_asm "    i32.load8_u";
-            output_asm "    i32.const 1";
-            output_asm "    i32.sub";
-            output_asm "    i32.const 255";
-            output_asm "    i32.and";
-            output_asm "    i32.store8"
+            | ARM ->
+                output_asm "    ldrb w0, [x20]";
+                output_asm (Printf.sprintf "    sub w0, w0, #%d" count);
+                output_asm "    and w0, w0, #255";
+                output_asm "    strb w0, [x20]"
+            | _ -> ()
         )
-        | Parser.Dot ->
+        | Dot ->
         (match arch with
-            | Intel ->
-                output_asm "    mov rax, 1 ; sys_write";
-                output_asm "    mov rdi, 1 ; stdout";
-                output_asm "    mov rdx, 1 ; length";
-                output_asm "    syscall"
             | ARM ->
                 output_asm "    ldrb w0, [x20]";
                 output_asm "    bl _putchar"
-            | WASM ->
-                output_asm "    local.get $ptr";
-                output_asm "    i32.load8_u";
-                output_asm "    call $putchar"
+            | _ -> ()
         )
-        | Parser.Comma ->
+        | Comma ->
         (match arch with
-            | Intel ->
-                output_asm "    mov rax, 0 ; sys_read";
-                output_asm "    mov rdi, 0 ; stdin";
-                output_asm "    mov rdx, 1 ; length";
-                output_asm "    syscall";
             | ARM ->
                 output_asm "    bl _getchar";
                 output_asm "    and w0, w0, #255";
                 output_asm "    strb w0, [x20]"
-            | WASM ->
-                output_asm "    call $getchar";
-                output_asm "    local.get $ptr";
-                output_asm "    i32.const 255";
-                output_asm "    i32.and";
-                output_asm "    i32.store8"
+            | _ -> ()
         )
-        | Parser.LBrack ->
+        | Nop -> ()
+        | Loop { body; nested = _; cmplx = _ } -> (* implicit L brack*)
             let label = loop_label () in
             Stack.push loop_stack label;
             (match arch with
-            | Intel ->
-                output_asm (Printf.sprintf "%s:" label);
-                output_asm "    cmp byte [rsi], 0 ; Check if current value is zero";
-                output_asm (Printf.sprintf "    je %s_end ; Jump to end if zero" label)
-            | ARM ->
-                output_asm (Printf.sprintf "%s:" label);
-                output_asm "    ldrb w0, [x20]";
-                output_asm (Printf.sprintf "    cbz w0, %s_end" label)
-            | WASM ->
-                output_asm (Printf.sprintf "    (block $%s_end" label);
-                output_asm "      (loop $loop";
-                output_asm "        local.get $ptr";
-                output_asm "        i32.load8_u";
-                output_asm "        i32.eqz";
-                output_asm (Printf.sprintf "        br_if $%s_end" label)
-            )
-        | Parser.RBrack ->
-            if Stack.is_empty loop_stack then
-                failwith "Unmatched closing bracket"
-            else
-                let label = Stack.pop_exn loop_stack in
-                (match arch with
-                | Intel -> 
-                    output_asm "    cmp byte [rsi], 0 ; Check if current value is zero";
-                    output_asm (Printf.sprintf "    jne %s ; Jump back to start of loop if non-zero" "")
                 | ARM -> 
+                    output_asm (Printf.sprintf "%s:" label);
                     output_asm "    ldrb w0, [x20]";
-                    output_asm (Printf.sprintf "    cbnz w0, %s" label);
-                    output_asm (Printf.sprintf "%s_end:" label)
-                | WASM ->
-                    output_asm "        br $loop";
-                    output_asm "      )";
-                    output_asm "    )"
-                )
+                    output_asm (Printf.sprintf "    cbz w0, %s_end" label);
+
+                    List.iter body ~f:emit_command;
+
+                    emit_loop_end_cmd ARM loop_stack;
+                | _ -> ()
+        )
     in
     
     List.iter program ~f:emit_command;
         
     (match arch with
-    | Intel ->
-        output_asm "    mov rax, 60 ; sys_exit";
-        output_asm "    xor rdi, rdi ; exit code 0";
-        output_asm "    syscall";
-        output_asm "section .bss";
-        output_asm "memory: resb 30000"
     | ARM ->
         output_asm "    ldr x0, [sp], #16"; (* Load malloc'd pointer from stack *)
         output_asm "    bl _free"; (* Free the allocated memory *)
@@ -222,22 +145,35 @@ let generate_asm filename program arch _profile _profiler =
         output_asm "_exit_error:";
         output_asm "    mov x0, #1"; (* error code 1 *)
         output_asm "    bl _exit"
-    | WASM ->
-        output_asm "  )";
-        output_asm ")"
+    | _ -> ()
     );
     
     Out_channel.close chan
 
 
-let generate filename input ?(profile = false)() =
-  let profiler = {
-    instr_count = Hashtbl.create (module String);
-    simple_loops = Hashtbl.create (module TokenHashSet);
-    complex_loops = Hashtbl.create (module TokenHashSet);
-  } in
+module ParserMap = struct
+    module T = struct
+        type t = Parser.token
+        let compare = Parser.compare_token
+        let sexp_of_t = Parser.sexp_of_token
+    end
+    include T
+    include Comparable.Make(T)
+    end
+        
+(* todo: store this info in a module *)
+let generate filename input opt ?(_profile = false)() =
   let arch = ARM in
   let program = parse_program input in
-  let result = generate_asm filename program arch profile profiler in 
+  let bfir = BFIR.gen_ir program [] None in
+  let result = 
+    match opt with 
+    | 1 -> 
+        let _ = Stdio.print_endline (bfir_to_string bfir) in 
+        let optimized = opt_simple bfir in
+        let _ = Stdio.print_endline (bfir_to_string optimized) in 
+        generate_asm filename optimized arch
+    | _ -> generate_asm filename bfir arch
+  in 
   result;
   Stdio.print_endline "gen prog exit";
