@@ -2,7 +2,7 @@ open Parser
 open Base
 
 let frontend input ?(profile = false) () =
-  let profiler = {
+  let profiler = { 
     instr_count = Hashtbl.create (module String);
     simple_loops = Hashtbl.create (module TokenHashSet);
     complex_loops = Hashtbl.create (module TokenHashSet);

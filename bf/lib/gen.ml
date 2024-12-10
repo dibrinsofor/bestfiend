@@ -115,7 +115,8 @@ let generate_asm filename program arch  =
             | _ -> ()
         )
         | Nop -> ()
-        | Loop { body; nested = _; cmplx = _ } -> (* implicit L brack*)
+        | Scan _disp -> ()
+        | Loop { body; _ } -> (* implicit L brack*)
             let label = loop_label () in
             Stack.push loop_stack label;
             (match arch with
@@ -173,6 +174,16 @@ let generate filename input opt ?(_profile = false)() =
         let optimized = opt_simple bfir in
         let _ = Stdio.print_endline (bfir_to_string optimized) in 
         generate_asm filename optimized arch
+    | 2 -> 
+        let _ = Stdio.print_endline (bfir_to_string bfir) in 
+        let optimized = opt_mem_scan bfir in
+        let _ = Stdio.print_endline (bfir_to_string optimized) in 
+        generate_asm filename (optimized) arch
+    | 3 -> 
+        let _ = Stdio.print_endline (bfir_to_string bfir) in 
+        let optimized = apply_both_opts bfir in
+        let _ = Stdio.print_endline (bfir_to_string optimized) in 
+        generate_asm filename (optimized) arch
     | _ -> generate_asm filename bfir arch
   in 
   result;

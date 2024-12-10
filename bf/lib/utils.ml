@@ -9,7 +9,8 @@ type bfir =
   | Dot 
   | Comma
   | Nop
-  | Loop of { body: bfir list; nested: bool; cmplx: bool }
+  | Scan of {dir: bfir}
+  | Loop of { body: bfir list; nested: bool; cmplx: bool; mem_scan: bool}
 
 (* (* type Interpreter struct {
 	source  []byte
@@ -68,14 +69,6 @@ module BFIR = struct
     | 0 when not nestedorcmplx -> true
     | _ -> false
 
-  (* let is_trivial_loop body =
-    let ptr_mv = ptr_movement body in
-    let p0 = p0_delta body in
-    p0 = 0 && (ptr_mv = -1 || ptr_mv = 1) && 
-    List.for_all (function 
-      | Minus { count = 1 } -> true 
-      | _ -> false) body *)
-
   let is_trivial_loop body =
     let ptr_mv = ptr_movement body in
     let p0 = p0_delta body in
@@ -86,13 +79,13 @@ module BFIR = struct
   
   let rec replace_simple_loop instr =
     match instr with
-    | Loop { body; nested; cmplx } when not nested && not cmplx ->
+    | Loop { body; nested; cmplx; mem_scan } when not nested && not cmplx ->
         if is_trivial_loop body then
           Nop
         else
-          Loop { body = List.map replace_simple_loop body; nested; cmplx }
-    | Loop { body; nested; cmplx } ->
-        Loop { body = List.map replace_simple_loop body; nested; cmplx }
+          Loop { body = List.map replace_simple_loop body; nested; cmplx; mem_scan }
+    | Loop { body; nested; cmplx; mem_scan } ->
+        Loop { body = List.map replace_simple_loop body; nested; cmplx; mem_scan }
     | _ -> instr
 
   let rec opt_simple program =
@@ -131,12 +124,16 @@ module BFIR = struct
       | Right { count } -> Printf.sprintf "Right(%d)" count
       | Dot -> "Dot"
       | Comma -> "Comma"
-      | Loop { body; nested; cmplx } ->
-          Printf.sprintf "Loop(nested=%b, cmplx=%b, body=[%s])"
+      | Loop { body; nested; cmplx; mem_scan } ->
+          Printf.sprintf "Loop(nested=%b, cmplx=%b, mem_scan=%b, body=[%s])"
             nested
             cmplx
+            mem_scan
             (bfir_to_string body)
       | Nop -> "Nop"
+      | Scan{dir} -> 
+          Printf.sprintf "Scan(shift_by=%s)" 
+            (bfir_to_string [dir])
     in
     match bfir with
     | [] -> ""
@@ -190,6 +187,63 @@ module BFIR = struct
     in
     loop_counter program 0
 
+    let is_mem_scan body =
+      let rec helper acc = function
+        | [] -> (abs acc) mod 2 = 0
+        | Nop :: rst -> helper acc rst
+        | Left { count } :: rst -> helper (acc + count) rst
+        | Right { count } :: rst -> helper (acc - count) rst
+        | _ -> false
+      in
+      helper 0 body      
+
+    (* [Left(4); Right(16)] -> (Right(12)) *)
+    let calc_dis (bfir_list: bfir list) =
+      let rec calculate_displacement acc = function
+        | [] -> acc
+        | Right { count } :: rest -> 
+            calculate_displacement (acc + count) rest
+        | Left { count } :: rest -> 
+            calculate_displacement (acc - count) rest
+        | _ :: rest -> 
+            calculate_displacement acc rest
+      in
+      calculate_displacement 0 bfir_list
+
+    let get_dis_instr count =
+      match count with
+      | count when count > 0 -> Right { count = abs count }
+      | count when count < 0 -> Left { count = abs count }
+      | _ -> Nop
+
+    let replace_scan = function
+    | Loop data -> 
+      if not data.mem_scan then
+        Loop data
+      else (*gra, we'vw got a scan *)
+        let count = calc_dis data.body in
+        let new_instr = get_dis_instr count in
+          Scan {dir=new_instr}
+    | other -> other
+      
+    let opt_mem_scan program =
+      let optimized = List.map replace_scan program in
+      if optimized = program then program
+      else opt_simple optimized
+
+    let rec opt_simple program =
+      let optimized = List.map replace_simple_loop program in
+      if optimized = program then program
+      else opt_simple optimized
+
+    let rec apply_both_opts bfir =
+      let simple_opt = opt_simple bfir in
+      let mem_scan_opt = opt_mem_scan simple_opt in
+      if mem_scan_opt = bfir then
+        bfir 
+      else
+        apply_both_opts mem_scan_opt
+
     let rec gen_ir (program: token list) (acc: bfir list) (prev: token option) =
       let create_ir (token: token) (loop: token list) =
         match token with
@@ -212,7 +266,8 @@ module BFIR = struct
           Loop { 
             body = body; 
             nested = is_nested body; 
-            cmplx = is_complex_loop body 
+            cmplx = is_complex_loop body;
+            mem_scan = is_mem_scan body;
           }
         | _ -> Nop
       in 
