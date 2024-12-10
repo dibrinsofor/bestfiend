@@ -43,7 +43,6 @@ let run_bf =
         llvm = flag "ll" (Command.Flag.optional_with_default false Command.Param.bool) ~doc:"Compile to LLVM"
       and 
         opt = flag "o" (Command.Flag.optional_with_default 2 Command.Param.int) ~doc:"Optimize loops"
-        (* collect number up to 3 and run optimizations that many times *)
       and 
         interp = flag "i" (Command.Flag.optional_with_default false Command.Param.bool) ~doc:"Interpret your bf program"
       in

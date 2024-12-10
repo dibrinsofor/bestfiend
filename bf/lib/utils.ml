@@ -72,7 +72,8 @@ module BFIR = struct
   let is_trivial_loop body =
     let ptr_mv = ptr_movement body in
     let p0 = p0_delta body in
-    p0 = 0 && ptr_mv = 0 &&
+    (is_no_op p0 ptr_mv) || (ptr_mv = 0 && (p0 = -1 || p0 = 1)) 
+    &&
     List.for_all (function
       | Minus { count = 1 } -> true
       | _ -> false) body

@@ -44,6 +44,85 @@ let generate_asm filename program arch  =
           (output_asm (Printf.sprintf " str xzr, [x1, #%d]" (i * 16));
            _output_asm_range (i + 1) max)
     in 
+
+    let anal_scan (bfir: bfir) = 
+        match bfir with
+        | Right {count} -> (count, "#1")
+        | Left {count} -> (count, "#-1")
+        | _ -> failwith "Invalid Scan Loop" 
+    in
+
+    let get_vector_width count =
+        match count with
+        | 2 -> 8
+        | 4 -> 8
+        | 8 -> 16
+        | 16 -> 32
+        | _ -> failwith "Unsupported width"
+    in
+
+    (* (match vector_select with
+    | 8 ->
+        output_asm "    ldr q0, [x20]";        (* Load 8-bit vector *)
+        output_asm "    cmeq v1.8b, v0.8b, #0"; (* Compare 8-bit vector to zero *)
+        output_asm "    not v1.8b, v1.8b";     (* Invert mask *)
+        output_asm "    umov w0, v1.b[0]";     (* Extract first non-zero index *)
+        output_asm (Printf.sprintf "    add x20, x20, x0")
+    | 16 ->
+        output_asm "    ldr q0, [x20]";        (* Load 16-bit vector *)
+        output_asm "    cmeq v1.16b, v0.16b, #0";
+        output_asm "    not v1.16b, v1.16b";
+        output_asm "    umov w0, v1.b[0]";
+        output_asm (Printf.sprintf "    add x20, x20, x0")
+    | 32 ->
+        output_asm "    ldr q0, [x20]";        (* Load 32-bit vector *)
+        output_asm "    ldr q1, [x20, #16]";   (* Load next 32 bits *)
+        output_asm "    cmeq v2.16b, v0.16b, #0";
+        output_asm "    cmeq v3.16b, v1.16b, #0";
+        output_asm "    not v2.16b, v2.16b";
+        output_asm "    not v3.16b, v3.16b";
+        output_asm "    umov w0, v2.b[0]";     (* First try first vector *)
+        output_asm "    cbnz w0, scan_found";
+        output_asm "    umov w0, v3.b[0]";     (* If not found, try second vector *)
+        output_asm "    add x0, x0, #16";      (* Adjust index for second vector *)
+        output_asm "scan_found:";
+        output_asm (Printf.sprintf "    add x20, x20, x0") *)
+
+    let emit_scan_instr width count =
+        match width with
+        | 8 -> 
+            output_asm "    ldr q0, [x20]";
+            output_asm "    cmeq v1.8b, v0.8b, #0";
+            output_asm "    not v1.8b, v1.8b";
+            output_asm "    umov w0, v1.b[0]";
+            output_asm (Printf.sprintf "    add x20, x20, #%d" count)
+            (* output_asm (Printf.sprintf "    add x20, x20, x0") *)
+        | 16 -> 
+            (* output_asm "    ldr q0, [x20]"; 
+            output_asm "    cmeq v1.16b, v0.16b, #0"; 
+            output_asm "    mov w1, v1.d[0]"; 
+            output_asm "    rbit w1, w1"; 
+            output_asm "    clz w0, w1";  *)
+            output_asm "    ldr q0, [x20]";
+            output_asm "    cmeq v1.16b, v0.16b, #0";
+            output_asm "    not v1.16b, v1.16b";
+            output_asm "    umov w0, v1.b[0]";
+            output_asm (Printf.sprintf "    add x20, x20, #%d" count)
+        | 32 ->
+            output_asm "    ldr q0, [x20]";        (* Load 32-bit vector *)
+            output_asm "    ldr q1, [x20, #16]";   (* Load next 32 bits *)
+            output_asm "    cmeq v2.16b, v0.16b, #0";
+            output_asm "    cmeq v3.16b, v1.16b, #0";
+            output_asm "    not v2.16b, v2.16b";
+            output_asm "    not v3.16b, v3.16b";
+            output_asm "    umov w0, v2.b[0]";
+            output_asm "    cbnz w0, scan_found";
+            output_asm "    umov w0, v3.b[0]";
+            output_asm "    add x0, x0, #16";
+            output_asm "scan_found:";
+            output_asm (Printf.sprintf "    add x20, x20, #%d" count)
+        | _ -> failwith "Unsupported width"
+    in
     
     (match arch with
     | ARM ->
@@ -115,7 +194,14 @@ let generate_asm filename program arch  =
             | _ -> ()
         )
         | Nop -> ()
-        | Scan _disp -> ()
+        | Scan disp -> 
+            let (count, _) = anal_scan disp.dir in
+            let width = get_vector_width count in
+            (match arch with
+            | ARM ->
+                emit_scan_instr width count
+            | _ -> ()
+            )
         | Loop { body; _ } -> (* implicit L brack*)
             let label = loop_label () in
             Stack.push loop_stack label;
